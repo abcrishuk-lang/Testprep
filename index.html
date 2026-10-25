@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TestPrep</title>
+<style>
+:root{--bg:#f4f6fb;--card:#fff;--tx:#1b1f3a;--mut:#5d6385;--pri:#4f46e5;--pt:#fff;--bd:#e3e6f3;--ok:#16a34a;--bad:#dc2626;--rv:#9333ea}
+@media (prefers-color-scheme:dark){:root{--bg:#12142a;--card:#1c1f3b;--tx:#eef0ff;--mut:#a3a9d1;--pri:#818cf8;--pt:#12142a;--bd:#2d3158;--ok:#4ade80;--bad:#f87171;--rv:#c084fc}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--tx);font:16px/1.5 system-ui,sans-serif}
+.w{max-width:720px;margin:0 auto;padding:12px 16px 40px}
+.c{background:var(--card);border:1px solid var(--bd);border-radius:14px;padding:14px;margin-bottom:10px}
+.r{display:flex;justify-content:space-between;align-items:center;gap:8px}.m{color:var(--mut);font-size:13px}
+button{font:inherit}.b{background:var(--pri);color:var(--pt);border:0;border-radius:10px;padding:10px 16px;font-weight:600;cursor:pointer}.b.o{background:transparent;color:var(--pri);border:1.5px solid var(--pri)}
+input{width:100%;padding:12px;margin-bottom:10px;border:1.5px solid var(--bd);border-radius:10px;background:var(--bg);color:var(--tx);font-size:16px}
+.o1{display:block;width:100%;text-align:left;background:var(--bg);color:var(--tx);border:1.5px solid var(--bd);border-radius:10px;padding:11px;margin-bottom:8px;cursor:pointer}
+.o1.s{border-color:var(--pri);background:color-mix(in srgb,var(--pri) 14%,transparent)}.o1.ok{border-color:var(--ok)}.o1.bad{border-color:var(--bad)}
+.pal{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}.pb{width:36px;height:36px;border-radius:8px;border:2px solid transparent;background:var(--bd);color:var(--tx);cursor:pointer}
+.pb.y{background:var(--ok);color:#fff}.pb.v{background:var(--rv);color:#fff}.pb.cur{border-color:var(--pri)}
+.big{font-size:40px;font-weight:800;color:var(--pri);text-align:center}.err{color:var(--bad);font-size:14px}
+</style>
+</head>
+<body><div class="w" id="app">Loading...</div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script>
+const sb=supabase.createClient("https://tjekvucwbsjcpsneswyb.supabase.co","sb_publishable_7A180Tt2ByZcLwgmxDODSA_zUtdKTum");
+const A=document.getElementById("app");
+const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const nav=()=>`<div class="r" style="margin-bottom:10px"><b style="color:var(--pri);font-size:20px;cursor:pointer" onclick="home()">TestPrep</b><span><button class="b o" onclick="mine()">My Attempts</button> <button class="b o" onclick="out()">Logout</button></span></div>`;
+
+function authView(msg){
+A.innerHTML=`<h1>TestPrep</h1><div class="c"><input id="e" type="email" placeholder="Email" autocomplete="email"><input id="p" type="password" placeholder="Password (kam se kam 6 akshar)" autocomplete="current-password"><div class="err">${esc(msg||"")}</div><div class="r"><button class="b" onclick="login()">Login</button><button class="b o" onclick="signup()">Naya account</button></div></div>`}
+async function login(){const{error}=await sb.auth.signInWithPassword({email:e.value.trim(),password:p.value});error?authView(error.message):home()}
+async function signup(){const{data,error}=await sb.auth.signUp({email:e.value.trim(),password:p.value});
+if(error)return authView(error.message);data.session?home():authView("Account ban gaya. Email check karke confirm karo, phir login karo.")}
+async function out(){await sb.auth.signOut();authView()}
+
+async function home(){
+A.innerHTML=nav()+"Loading...";
+const{data,error}=await sb.from("series").select("id,exam,name,tests(id,title,duration_min,is_free)").order("id");
+if(error)return A.innerHTML=nav()+`<div class="c err">${esc(error.message)}</div>`;
+if(!data.length)return A.innerHTML=nav()+`<div class="c">Abhi koi test nahi hai. Admin panel se add karenge.</div>`;
+A.innerHTML=nav()+data.map(s=>`<h3>${esc(s.name)} <span class="m">${esc(s.exam)}</span></h3>`+(s.tests||[]).map(t=>`<div class="c r"><div><b>${esc(t.title)}</b><div class="m">${t.duration_min} min${t.is_free?" · FREE":""}</div></div>${t.is_free?`<button class="b" onclick="begin(${t.id})">Start</button>`:`<button class="b o" onclick="alert('Paid plan jaldi aayega')">🔒 Pro</button>`}</div>`).join("")).join("")}
+
+let T,iv;
+async function begin(id){
+const[t,q]=await Promise.all([sb.from("tests").select("*").eq("id",id).single(),sb.from("questions").select("*").eq("test_id",id).order("id")]);
+if(t.error||q.error||!q.data.length)return alert("Is test mein abhi sawal nahi hain.");
+T={t:t.data,q:q.data,a:q.data.map(()=>-1),m:q.data.map(()=>false),i:0,left:t.data.duration_min*60,done:false};
+clearInterval(iv);iv=setInterval(()=>{T.left--;tick();if(T.left<=0)finish()},1000);draw()}
+function tick(){const x=document.getElementById("tm");if(x){const l=Math.max(T.left,0);x.textContent="⏱ "+String(Math.floor(l/60)).padStart(2,"0")+":"+String(l%60).padStart(2,"0")}}
+function draw(){const q=T.q[T.i],n=T.q.length;
+A.innerHTML=`<div class="r"><b>${esc(T.t.title)}</b><b id="tm" style="color:var(--pri)"></b></div>
+<div class="c"><div class="m">${esc(q.section||"")} · Q${T.i+1}/${n} · +${T.t.pos_marks} / −${T.t.neg_marks}</div><div style="font-size:18px;font-weight:600;margin:6px 0 12px">${esc(q.body)}</div>
+${q.options.map((o,k)=>`<button class="o1 ${T.a[T.i]===k?"s":""}" onclick="T.a[T.i]=${k};draw()">${String.fromCharCode(65+k)}. ${esc(o)}</button>`).join("")}
+<div class="r"><button class="b o" onclick="go(-1)">←</button><button class="b o" onclick="T.a[T.i]=-1;draw()">Clear</button><button class="b o" onclick="T.m[T.i]=!T.m[T.i];draw()">${T.m[T.i]?"★ Marked":"☆ Mark"}</button><button class="b" onclick="go(1)">→</button></div></div>
+<div class="c"><div class="r"><b>Palette</b><button class="b o" onclick="sub()">Submit</button></div><div class="pal">${T.q.map((_,k)=>`<button class="pb ${T.m[k]?"v":T.a[k]>=0?"y":""} ${k===T.i?"cur":""}" onclick="T.i=${k};draw()">${k+1}</button>`).join("")}</div></div>`;tick()}
+function go(d){T.i=Math.min(Math.max(T.i+d,0),T.q.length-1);draw()}
+function sub(){const a=T.a.filter(x=>x>=0).length;if(confirm("Attempted: "+a+"/"+T.q.length+"\nSubmit karein?"))finish()}
+async function finish(){if(T.done)return;T.done=true;clearInterval(iv);
+let c=0,w=0;T.q.forEach((q,k)=>{if(T.a[k]<0)return;T.a[k]===q.answer?c++:w++});
+const score=c*T.t.pos_marks-w*T.t.neg_marks,max=T.q.length*T.t.pos_marks;
+const{error}=await sb.from("attempts").insert({test_id:T.t.id,answers:T.a,score,max_score:max});
+A.innerHTML=nav()+`<div class="c"><div class="big">${score} / ${max}</div><p style="text-align:center" class="m">Sahi ${c} · Galat ${w} · Skipped ${T.q.length-c-w}</p>${error?`<div class="err">Score save nahi hua: ${esc(error.message)}</div>`:""}</div><h3>Solutions</h3>`+
+T.q.map((q,k)=>`<div class="c"><b>Q${k+1}. ${esc(q.body)}</b><br><br>${q.options.map((o,j)=>`<div class="o1 ${j===q.answer?"ok":j===T.a[k]?"bad":""}">${esc(o)}${j===q.answer?" ✓":j===T.a[k]?" ✗":""}</div>`).join("")}<div class="m">💡 ${esc(q.explanation||"")}</div></div>`).join("")+`<button class="b" onclick="home()">Home</button>`}
+
+async function mine(){
+A.innerHTML=nav()+"Loading...";
+const{data,error}=await sb.from("attempts").select("score,max_score,created_at,tests(title)").order("created_at",{ascending:false});
+if(error)return A.innerHTML=nav()+`<div class="c err">${esc(error.message)}</div>`;
+A.innerHTML=nav()+"<h3>My Attempts</h3>"+(data.length?data.map(a=>`<div class="c r"><div><b>${esc(a.tests?.title)}</b><div class="m">${new Date(a.created_at).toLocaleDateString("en-IN")}</div></div><b>${a.score}/${a.max_score}</b></div>`).join(""):`<div class="c">Abhi koi attempt nahi.</div>`)}
+
+sb.auth.getSession().then(({data})=>data.session?home():authView());
+</script>
+</body>
+</html>
